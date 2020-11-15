@@ -55,6 +55,255 @@ TEST_F(KeyPress, ANonMappedKeyDoesNothing) {
     keyboard_task();
 }
 
+#if defined(REGISTER_MULTIPLE_KEYEVENTS_ENABLE)
+
+TEST_F(KeyPress, CorrectKeysAreReportedWhenTwoKeysArePressed) {
+    TestDriver driver;
+    auto       key_b = KeymapKey(0, 0, 0, KC_B);
+    auto       key_c = KeymapKey(0, 1, 1, KC_C);
+
+    set_keymap({key_b, key_c});
+
+    key_b.press();
+    key_c.press();
+    EXPECT_REPORT(driver, (key_b.report_code, key_c.report_code));
+    keyboard_task();
+
+    key_b.release();
+    key_c.release();
+    EXPECT_EMPTY_REPORT(driver);
+    keyboard_task();
+}
+
+TEST_F(KeyPress, LeftShiftIsReportedCorrectly) {
+    TestDriver driver;
+    auto       key_a    = KeymapKey(0, 0, 0, KC_A);
+    auto       key_lsft = KeymapKey(0, 3, 0, KC_LEFT_SHIFT);
+
+    set_keymap({key_a, key_lsft});
+
+    key_lsft.press();
+    key_a.press();
+
+    EXPECT_REPORT(driver, (key_a.report_code, key_lsft.report_code));
+    keyboard_task();
+
+    key_a.release();
+    EXPECT_REPORT(driver, (key_lsft.report_code));
+    keyboard_task();
+
+    key_lsft.release();
+    EXPECT_EMPTY_REPORT(driver);
+    keyboard_task();
+}
+
+TEST_F(KeyPress, PressLeftShiftAndControl) {
+    TestDriver driver;
+    auto       key_lsft  = KeymapKey(0, 3, 0, KC_LEFT_SHIFT);
+    auto       key_lctrl = KeymapKey(0, 5, 0, KC_LEFT_CTRL);
+
+    set_keymap({key_lctrl, key_lsft});
+
+    key_lsft.press();
+    key_lctrl.press();
+
+    EXPECT_REPORT(driver, (key_lsft.report_code, key_lctrl.report_code));
+    keyboard_task();
+
+    key_lsft.release();
+    key_lctrl.release();
+
+    EXPECT_EMPTY_REPORT(driver);
+    keyboard_task();
+}
+
+TEST_F(KeyPress, LeftAndRightShiftCanBePressedAtTheSameTime) {
+    TestDriver driver;
+    auto       key_lsft = KeymapKey(0, 3, 0, KC_LEFT_SHIFT);
+    auto       key_rsft = KeymapKey(0, 4, 0, KC_RIGHT_SHIFT);
+
+    set_keymap({key_rsft, key_lsft});
+
+    key_lsft.press();
+    key_rsft.press();
+    EXPECT_REPORT(driver, (key_lsft.report_code, key_rsft.report_code));
+    keyboard_task();
+
+    key_lsft.release();
+    key_rsft.release();
+    EXPECT_EMPTY_REPORT(driver);
+    keyboard_task();
+}
+
+TEST_F(KeyPress, RightShiftLeftControlAndCharWithTheSameKey) {
+    TestDriver driver;
+    auto       combo_key = KeymapKey(0, 0, 0, RSFT(LCTL(KC_O)));
+
+    set_keymap({combo_key});
+
+    // BUG: It reports RSFT instead of LSFT
+    // See issue #524 for more information
+    // The underlying cause is that we use only one bit to represent the right hand
+    // modifiers.
+    combo_key.press();
+    EXPECT_REPORT(driver, (KC_RIGHT_SHIFT, KC_RIGHT_CTRL, KC_O));
+    keyboard_task();
+
+    combo_key.release();
+    EXPECT_EMPTY_REPORT(driver);
+    keyboard_task();
+}
+
+TEST_F(KeyPress, PressPlusEqualReleaseBeforePress) {
+    TestDriver driver;
+    InSequence s;
+    auto       key_plus = KeymapKey(0, 1, 1, KC_PLUS);
+    auto       key_eql  = KeymapKey(0, 0, 1, KC_EQUAL);
+
+    set_keymap({key_plus, key_eql});
+
+    key_plus.press();
+    EXPECT_REPORT(driver, (KC_LEFT_SHIFT, KC_EQUAL));
+    run_one_scan_loop();
+    VERIFY_AND_CLEAR(driver);
+
+    key_plus.release();
+    EXPECT_EMPTY_REPORT(driver);
+    run_one_scan_loop();
+    VERIFY_AND_CLEAR(driver);
+
+    key_eql.press();
+    EXPECT_REPORT(driver, (key_eql.report_code));
+    run_one_scan_loop();
+    VERIFY_AND_CLEAR(driver);
+
+    key_eql.release();
+    EXPECT_EMPTY_REPORT(driver);
+    run_one_scan_loop();
+    VERIFY_AND_CLEAR(driver);
+}
+
+TEST_F(KeyPress, PressPlusEqualDontReleaseBeforePress) {
+    TestDriver driver;
+    InSequence s;
+    auto       key_plus = KeymapKey(0, 1, 1, KC_PLUS);
+    auto       key_eql  = KeymapKey(0, 0, 1, KC_EQUAL);
+
+    set_keymap({key_plus, key_eql});
+
+    key_plus.press();
+    EXPECT_REPORT(driver, (KC_LEFT_SHIFT, KC_EQUAL));
+    run_one_scan_loop();
+    VERIFY_AND_CLEAR(driver);
+
+    key_eql.press();
+    EXPECT_EMPTY_REPORT(driver);
+    EXPECT_REPORT(driver, (KC_EQUAL));
+    run_one_scan_loop();
+    VERIFY_AND_CLEAR(driver);
+
+    key_plus.release();
+    // BUG: Should really still return KC_EQUAL, but this is fine too
+    EXPECT_EMPTY_REPORT(driver);
+    run_one_scan_loop();
+    VERIFY_AND_CLEAR(driver);
+
+    key_eql.release();
+    EXPECT_NO_REPORT(driver);
+    run_one_scan_loop();
+    VERIFY_AND_CLEAR(driver);
+}
+
+TEST_F(KeyPress, PressEqualPlusReleaseBeforePress) {
+    TestDriver driver;
+    InSequence s;
+    auto       key_plus = KeymapKey(0, 1, 1, KC_PLUS);
+    auto       key_eql  = KeymapKey(0, 0, 1, KC_EQUAL);
+
+    set_keymap({key_plus, key_eql});
+
+    key_eql.press();
+    EXPECT_REPORT(driver, (KC_EQUAL));
+    run_one_scan_loop();
+    VERIFY_AND_CLEAR(driver);
+
+    key_eql.release();
+    EXPECT_EMPTY_REPORT(driver);
+    run_one_scan_loop();
+    VERIFY_AND_CLEAR(driver);
+
+    key_plus.press();
+    EXPECT_REPORT(driver, (KC_LEFT_SHIFT, KC_EQUAL));
+    run_one_scan_loop();
+    VERIFY_AND_CLEAR(driver);
+
+    key_plus.release();
+    EXPECT_EMPTY_REPORT(driver);
+    run_one_scan_loop();
+    VERIFY_AND_CLEAR(driver);
+}
+
+TEST_F(KeyPress, PressEqualPlusDontReleaseBeforePress) {
+    TestDriver driver;
+    InSequence s;
+    auto       key_plus = KeymapKey(0, 1, 1, KC_PLUS);
+    auto       key_eql  = KeymapKey(0, 0, 1, KC_EQUAL);
+
+    set_keymap({key_plus, key_eql});
+
+    key_eql.press();
+    EXPECT_REPORT(driver, (KC_EQUAL));
+    run_one_scan_loop();
+    VERIFY_AND_CLEAR(driver);
+
+    key_plus.press();
+    // BUG: The sequence is a bit strange, but it works, the end result is that
+    // KC_PLUS is sent
+    EXPECT_REPORT(driver, (KC_LEFT_SHIFT));
+    EXPECT_REPORT(driver, (KC_LEFT_SHIFT, KC_EQUAL));
+    run_one_scan_loop();
+    VERIFY_AND_CLEAR(driver);
+
+    key_eql.release();
+    // I guess it's fine to still report shift here
+    EXPECT_REPORT(driver, (KC_LEFT_SHIFT));
+    run_one_scan_loop();
+    VERIFY_AND_CLEAR(driver);
+
+    key_plus.release();
+    EXPECT_EMPTY_REPORT(driver);
+    run_one_scan_loop();
+    VERIFY_AND_CLEAR(driver);
+}
+
+TEST_F(KeyPress, PressMultipleKeysSendOneKeyboardReport) {
+    TestDriver driver;
+    auto       key_a = KeymapKey(0, 0, 0, KC_A);
+    auto       key_b = KeymapKey(0, 1, 0, KC_B);
+    auto       key_c = KeymapKey(0, 0, 3, KC_C);
+    auto       key_d = KeymapKey(0, 1, 3, KC_D);
+
+    set_keymap({key_a, key_b, key_c, key_d});
+
+    key_a.press();
+    key_b.press();
+    key_c.press();
+    key_d.press();
+    EXPECT_REPORT(driver, (key_a.report_code, key_b.report_code, key_c.report_code, key_d.report_code));
+    run_one_scan_loop();
+    VERIFY_AND_CLEAR(driver);
+
+    key_a.release();
+    key_b.release();
+    key_c.release();
+    key_d.release();
+    EXPECT_EMPTY_REPORT(driver);
+    run_one_scan_loop();
+    VERIFY_AND_CLEAR(driver);
+}
+
+#else
+
 TEST_F(KeyPress, CorrectKeysAreReportedWhenTwoKeysArePressed) {
     TestDriver driver;
     auto       key_b = KeymapKey(0, 0, 0, KC_B);
@@ -290,3 +539,5 @@ TEST_F(KeyPress, PressEqualPlusDontReleaseBeforePress) {
     run_one_scan_loop();
     VERIFY_AND_CLEAR(driver);
 }
+
+#endif

@@ -33,6 +33,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "sendchar.h"
 #include "eeconfig.h"
 #include "action_layer.h"
+#include "action_util.h"
 #ifdef AUDIO_ENABLE
 #    include "audio.h"
 #endif
@@ -638,6 +639,11 @@ void keyboard_task(void) {
         last_matrix_activity_trigger();
         activity_has_occurred = true;
     }
+
+#if defined(REGISTER_MULTIPLE_KEYEVENTS_ENABLE)
+    send_keyboard_report_immediate();
+    send_keyboard_report_buffered_unregister_keys();
+#endif
 
     quantum_task();
 
